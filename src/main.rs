@@ -1,20 +1,38 @@
-mod ui;
+mod renderer;
+mod config;
+mod model;
+mod event_stream;
 
-use ui::tui::TUI;
-use crate::ui::{UIControl, UI};
+// use console_subscriber;
 
-use std::{io, env, path::Path};
+use model::{Model, update::ModelUpdate};
+use crate::config::SpiderTuiConfig;
 
+use std::{io, env, path::{Path, PathBuf}};
 
 use tokio::select;
 
-use spider_client::{SpiderClient, Message, SpiderClientConfig};
+use spider_client::{
+    SpiderClient,
+    message::{
+        Message,
+        UiMessage,
+        UiPage,
+        UiElement, UiElementKind
+    },
+    SpiderId2048,
+    SelfRelation,
+    Role,
+    Relation,
+    AddressStrategy
+};
 
 use tracing::{info, debug};
 use tracing_appender::rolling::{Rotation, RollingFileAppender};
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
+    console_subscriber::init();
 
     // command line arguments: <filename>
     // filename is name of config file, defaults to config.json
@@ -22,91 +40,130 @@ async fn main() -> Result<(), io::Error> {
     let path_str = args.next().unwrap_or("spider_tui_config.json".to_string());
     let config_path = Path::new(&path_str);
 
-    let config = SpiderClientConfig::from_file(config_path);
+    let config = SpiderTuiConfig::from_file(config_path);
     let log_path = config.log_path.clone();
-    let log_path = log_path.unwrap_or(format!("spider_tui.log"));
     
     // Setup tracing
-    let file_appender = RollingFileAppender::new(Rotation::NEVER, "", log_path);
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    tracing_subscriber::fmt()
-        .pretty().with_ansi(false)
-        .with_writer(non_blocking)
-        .init();
+    // let file_appender = RollingFileAppender::new(Rotation::NEVER, "", log_path);
+    // let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    // tracing_subscriber::fmt()
+    //     .pretty().with_ansi(false)
+    //     .with_writer(non_blocking)
+    //     .init();
     info!("Starting!");
 
-    let client = SpiderClient::from_config(config);
-    let mut client_handle = client.start().await;
+    let client_path = PathBuf::from(config.state_data_path);
+    let mut client = if client_path.exists(){
+        SpiderClient::from_file(&client_path)
+    }else{
+        let mut client = SpiderClient::new();
+        client.set_state_path(&client_path);
+        client.add_strat(AddressStrategy::Addr(String::from("localhost:1930")));
+        client.save();
+        client
+    };
+    
+    if !client.has_host_relation(){
+        let path = PathBuf::from(&config.keyfile_path);        
 
-    let mut ui = TUI::new();
-
-
-    loop {
-        select! {
-            msg_result = ui.recv_async() => {
-                match msg_result{
-                    Some(msg) => {
-                        match msg{
-                            ui::UIInput::Message(text) => {
-                                if text == ""{
-                                    continue;
-                                }
-                                let ch = text.chars().next().unwrap();
-                                if ch == ':' {
-                                    let args = &text[1..].split_whitespace().collect::<Vec<_>>();
-                                    if args.len() == 0 {
-                                        continue;
-                                    }
-                                    
-                                    let response = match args[0] {
-                                        "quit" => break,
-                                        _ => format!("No such command: {}", &text[1..]),
-                                    };
-                                    ui.send_async(UIControl::Message(response)).await;
-                                    
-                                }else{
-                                    let parts = &text.split(':').collect::<Vec<_>>();
-                                    if parts.len() <= 1 {
-                                        ui.send_async(UIControl::Message(format!("Invalid format, requires: <id>:<message>"))).await;
-                                        continue;
-                                    }
-                                    if let Ok(to) = parts[0].parse::<u32>(){
-                                        let body = parts[1..].join(":").as_bytes().to_vec();
-                                        let msg = Message::Message{ msg_type: String::from("text"), routing: Some(to), body };
-                                        ui.send_async(UIControl::Message(format!("Sending message: {:?}", msg))).await;
-                                        client_handle.emit(msg).await;
-                                    }else{
-                                        ui.send_async(UIControl::Message(format!("Failed to parse id: {}", parts[0]))).await;
-                                    }
-                                }
-                            },
-                            ui::UIInput::Close => {
-                                break;
-                            }
-                        }
-                    },
-                    None => {println!("No message"); break;},
-                }
-            },
-            base_msg = client_handle.recv() => {
-                if let Some(msg) = base_msg{
-                    match msg {
-                        Message::Introduction{..}=> {}, // discard verification for now
-                        Message::Message { msg_type, routing, body } => {
-                            let body = String::from_utf8_lossy(&body);
-                            ui.send_async(UIControl::Message(format!(" -> {:?}", body))).await
-                        },
-                    }
-                }else{
-                    println!("Client connection to base broke");
-                    break;
-                }
-            },
+        let data = match std::fs::read_to_string(&path){
+            Ok(str) => str,
+            Err(_) => String::from("[]"),
         };
+		let id:SpiderId2048 = serde_json::from_str(&data).expect("Failed to deserialize spiderid");
+        let host = Relation { id, role: Role::Peer };
+        client.set_host_relation(host);
+        client.save();
     }
 
-    // println!("Should start closing down here!");
-    // chord.process_handle.await.expect("thread panicked");
+    client.connect().await;
+
+    let renderer = renderer::tui::TUI::new();
+    let model = Model::start(renderer, client.self_relation()).await;
+
+
+    
+
+
+    // connect client and keyboard inputs to model, connect model outputs to base
+    splice_client_keyboard_model(client, model).await;
+
 
     Ok(())
 }
+
+
+
+async fn splice_client_keyboard_model(mut client: SpiderClient, mut model: Model){
+
+    let mut events = event_stream::get_event_stream();
+    loop {
+
+        select! {
+            // keypresses to model
+            event = events.recv() =>{
+                match event{
+                    Some(event) => {
+                        // println!("terminal event: {:?}", event);
+                        let update = ModelUpdate::Event(event);
+                        if let Err(_) = model.send(update).await{
+                            debug!("Failed to send to model");
+                            break;// encountered error
+                        }                    
+                    },
+                    None => break, // inputs have failed, quit
+                }
+
+            }
+            // client messages to model
+            from_client = client.recv() => {
+                match from_client{
+                    Some(from_client) => {
+                        // println!("from client: {:?}", from_client);
+                        let update = message_to_update(from_client);
+                        if let Some(update) = update {
+                            model.send(update).await;
+                        }
+                    },
+                    None => todo!("need to update the model about the client's disconnection and attempt a reconnection"),
+                }
+            }
+            // model messages to client
+            from_model = model.recv() => {
+                match from_model{
+                    Some(from_model) => {
+                        // println!("Message from model: {:?}", from_model);
+                        client.send(from_model).await
+                    },
+                    None => break, // model has quit
+                }
+            }
+        }
+    }
+
+}
+
+
+
+fn message_to_update(msg: Message) -> Option<ModelUpdate> {
+    match msg {
+        Message::Peripheral(_) => None,
+        Message::Ui(ui) => {
+            match ui {
+                UiMessage::Subscribe => None,
+                UiMessage::GetPages => None,
+                UiMessage::Pages(page_list) => Some(ModelUpdate::SetPages(page_list)),
+                UiMessage::GetPage(_) => None,
+                UiMessage::Page(page) => Some(ModelUpdate::SetPage(page)),
+                UiMessage::UpdateElementsFor(id, updates) => Some(ModelUpdate::UpdateElementsFor(id, updates)),
+
+                UiMessage::SetPage(_) => None,
+                UiMessage::ClearPage => None,
+                UiMessage::UpdateElements(_) => None,
+            }
+        },
+        Message::Dataset => None,
+        Message::Event (_) => None,
+    }
+}
+

@@ -8,9 +8,13 @@ edition = "2021"
 [dependencies]
 spider_client = { git = "https://github.com/Ocelmot/spider" }
 
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "tracing"] }
+console-subscriber = "0.1.8"
 crossterm = "0.20"
 tui = { version = "0.16", default-features = false, features = ['crossterm'] }
+
+serde_json = "1.0.73"
+serde = { version = "1.0.132", features = ["derive"] }
 
 chrono = "0.4.19"
 
