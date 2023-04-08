@@ -156,10 +156,12 @@ fn message_to_update(msg: Message) -> Option<ModelUpdate> {
                 UiMessage::GetPage(_) => None,
                 UiMessage::Page(page) => Some(ModelUpdate::SetPage(page)),
                 UiMessage::UpdateElementsFor(id, updates) => Some(ModelUpdate::UpdateElementsFor(id, updates)),
+                UiMessage::InputFor(_, _, _) => None,
 
                 UiMessage::SetPage(_) => None,
                 UiMessage::ClearPage => None,
                 UiMessage::UpdateElements(_) => None,
+                UiMessage::Input(_, _) => None,
             }
         },
         Message::Dataset => None,

@@ -1,16 +1,18 @@
 use spider_client::{
     message::{Message, UiElement, UiElementKind, UiMessage, UiPath, UiPageList, UiPageManager},
-    Relation,
+    Relation, SpiderId2048,
 };
 
 use crate::renderer::Renderer;
 
+mod page_state;
+pub use self::page_state::PageState;
+
 use super::update::ModelUpdate;
 
-use std::thread::{spawn, JoinHandle};
+use std::{thread::{spawn, JoinHandle}, collections::HashMap};
 use tokio::sync::mpsc::{Receiver, Sender};
 
-mod render;
 mod update;
 
 pub(crate) mod state;
@@ -30,6 +32,7 @@ pub struct ModelProcessor<R: Renderer> {
 
     // page rendering
     page_set: UiPageList,
+    page_states: HashMap<SpiderId2048, PageState>,
 
 
     exit: bool,
@@ -52,7 +55,7 @@ impl<R: Renderer> ModelProcessor<R> {
             view: ModelView::List,
 
             page_set: UiPageList::new(),
-
+            page_states: HashMap::new(),
             exit: false,
         }
     }
@@ -92,4 +95,23 @@ impl<R: Renderer> ModelProcessor<R> {
             Ok(())
         })
     }
+
+    pub(crate) fn render(&mut self, renderer: &mut R){
+
+		match self.view{
+			ModelView::List => {
+				renderer.render_page_list(&self.page_set.get_page_vec(), self.page_set.selected_index());
+			},
+			ModelView::Page => {
+				match self.get_current_mgr_state(){
+					Some((mgr, state)) => renderer.render_page(mgr.get_page(), state),
+					None => {
+						self.view = ModelView::List;
+						renderer.render_page_list(&self.page_set.get_page_vec(), self.page_set.selected_index());
+					},
+				}
+			},
+		}
+	}
+
 }
