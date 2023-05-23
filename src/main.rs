@@ -151,20 +151,20 @@ fn message_to_update(msg: Message) -> Option<ModelUpdate> {
         Message::Ui(ui) => {
             match ui {
                 UiMessage::Subscribe => None,
-                UiMessage::GetPages => None,
                 UiMessage::Pages(page_list) => Some(ModelUpdate::SetPages(page_list)),
                 UiMessage::GetPage(_) => None,
                 UiMessage::Page(page) => Some(ModelUpdate::SetPage(page)),
                 UiMessage::UpdateElementsFor(id, updates) => Some(ModelUpdate::UpdateElementsFor(id, updates)),
-                UiMessage::InputFor(_, _, _) => None,
+                UiMessage::Dataset(path, dataset) => Some(ModelUpdate::UpdateDataset(path, dataset)),
+                UiMessage::InputFor(_, _, _, _) => None,
 
                 UiMessage::SetPage(_) => None,
                 UiMessage::ClearPage => None,
                 UiMessage::UpdateElements(_) => None,
-                UiMessage::Input(_, _) => None,
+                UiMessage::Input(_, _, _) => None,
             }
         },
-        Message::Dataset => None,
+        Message::Dataset(_) => None,
         Message::Event (_) => None,
     }
 }

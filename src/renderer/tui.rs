@@ -1,8 +1,10 @@
-use std::io::{self, Stdout};
+use std::{io::{self, Stdout}, collections::HashMap};
 use crossterm::{
 	event::{
 		EnableMouseCapture,
-		DisableMouseCapture, EnableBracketedPaste, DisableBracketedPaste
+		DisableMouseCapture,
+		EnableBracketedPaste,
+		DisableBracketedPaste
 	},
 	terminal::{
 		enable_raw_mode,
@@ -13,7 +15,7 @@ use crossterm::{
 	execute
 };
 
-use spider_client::message::{UiPage, UiElement};
+use spider_client::message::{UiPage, UiElement, DatasetData, AbsoluteDatasetPath};
 use tui::{
 	Terminal,
 	widgets::{Block, Borders, Paragraph, BorderType, List, ListItem},
@@ -42,7 +44,7 @@ impl TUI{
 			EnterAlternateScreen,
 			// EnableMouseCapture,
 			EnableBracketedPaste
-		);
+		).unwrap();
 		let backend = CrosstermBackend::new(stdout);
 		let terminal = Terminal::new(backend).expect("able to create a terminal");
 
@@ -61,7 +63,7 @@ impl Renderer for TUI{
 		todo!()
 	}
 
-	fn render_page(&mut self, page: &UiPage, state: &PageState) {
+	fn render_page(&mut self, page: &UiPage, state: &PageState, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>) {
 		self.term.draw(|frame|{
 			let constraints = vec![Constraint::Min(5), Constraint::Length(1)];
 			let areas = Layout::default()
@@ -80,11 +82,12 @@ impl Renderer for TUI{
 
 			// debug area
 			let default = String::from("-");
-			let text = state.get_selected_id().unwrap_or(&default);
-			let widget = Paragraph::new(text.as_ref());
+			let id_text = state.get_selected_id().unwrap_or(&default);
+			let indexes = state.get_selected_datasets();
+			let widget = Paragraph::new(format!("{} | {:?}", id_text, indexes));
 			frame.render_widget(widget, areas[1]);
 
-			draw_elem(frame, state, inner_size, page.root());		
+			draw_elem(frame, state, inner_size, page.root(), &None, data_map, &Vec::new());		
 
 		}).unwrap();
 	}
@@ -138,30 +141,74 @@ impl Renderer for TUI{
 }
 
 
-fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, elem: &UiElement){
+fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>, dataset_indices: &Vec<usize>){
+	let content = match data {
+		Some(data) => elem.render_content(data),
+		None => elem.text(),
+	};
+
 	match elem.kind(){
-		spider_client::message::UiElementKind::Columns => todo!(),
-		spider_client::message::UiElementKind::Rows => {
+		spider_client::message::UiElementKind::Columns => {
+			// calc constraints
 			let mut constraints = Vec::new();
-			for child in elem.children(){
-				constraints.push(Constraint::Min(3));
+			for (_, child, datum) in elem.children_dataset(data, data_map){
+				constraints.push(Constraint::Length(elem_calc_width(child, &datum, data_map)));
 			}
+			let areas = Layout::default()
+				.constraints(constraints)
+				.direction(Direction::Horizontal)
+				.split(rect);
+			let mut areas = areas.iter();
+			// render children
+			let mut v: Vec<usize>;
+			for (cdi, child, datum) in elem.children_dataset(data, data_map){
+				let area = areas.next().expect("areas should be dataset * children in length");
+				let child_dataset_indices = match cdi{
+					Some(cdi) => {
+						v = dataset_indices.clone();
+						v.push(cdi);
+						&v
+					},
+					None => dataset_indices,
+				};
+				draw_elem(frame, state, *area, child, &datum, data_map, child_dataset_indices);
+			}
+		},
+		spider_client::message::UiElementKind::Rows => {
+			// calc constraints
+			let mut constraints = Vec::new();
+			for (_, child, datum) in elem.children_dataset(data, data_map){
+				constraints.push(Constraint::Length(elem_calc_height(child, &datum, data_map)));
+			}
+			constraints.push(Constraint::Min(0));
 			let areas = Layout::default()
 				.constraints(constraints)
 				.direction(Direction::Vertical)
 				.split(rect);
-			for (child, area) in elem.children().zip(areas.iter()){
-				draw_elem(frame, state, *area, child);
+			let mut areas = areas.iter();
+			// render children
+			let mut v: Vec<usize>;
+			for (cdi, child, datum) in elem.children_dataset(data, data_map){
+				let area = areas.next().expect("areas should be dataset * children in length");
+				let child_dataset_indices = match cdi{
+					Some(cdi) => {
+						v = dataset_indices.clone();
+						v.push(cdi);
+						&v
+					},
+					None => dataset_indices,
+				};
+				draw_elem(frame, state, *area, child, &datum, data_map, child_dataset_indices);
 			}
 		},
 		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
 		spider_client::message::UiElementKind::Text => {
-			let w = Paragraph::new(elem.text().clone());
+			let w = Paragraph::new(content);
 			frame.render_widget(w, rect);
 		},
 		spider_client::message::UiElementKind::TextEntry => {
 			let b = Block::default()
-				.title(elem.text())
+				.title(content)
 				.borders(Borders::all())
 				// .border_style(Style::default().fg(Color::White))
 				.style(Style::default().bg(Color::Black));
@@ -175,18 +222,71 @@ fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, el
 				None => "",
 			};
 			let mut w = Paragraph::new(input_text);
-			if state.get_selected_id() == elem.id(){
+			if state.get_selected_id() == elem.id() && state.get_selected_datasets() == dataset_indices{
 				w = w.style(Style::default().add_modifier(Modifier::BOLD));
 			}
 			frame.render_widget(w.block(b), rect);
 		},
 		spider_client::message::UiElementKind::Button => {
 			let b = Block::default().borders(Borders::ALL);
-			let mut w = Paragraph::new(elem.text().clone());
-			if state.get_selected_id() == elem.id(){
+			let mut w = Paragraph::new(content);
+			if state.get_selected_id() == elem.id() && state.get_selected_datasets() == dataset_indices{
 				w = w.style(Style::default().add_modifier(Modifier::BOLD));
 			}
 			frame.render_widget(w.block(b), rect);
 		},
+	}
+}
+
+
+fn elem_calc_height(elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>) -> u16{
+	match elem.kind(){
+		spider_client::message::UiElementKind::Columns => {
+			let mut height = 0;
+			for (_, child, data) in elem.children_dataset(data, data_map){
+				let child_height = elem_calc_height(child, &data, data_map);
+				if child_height > height{
+					height = child_height; 
+				}
+			}
+			height
+		},
+		spider_client::message::UiElementKind::Rows => {
+			let mut height = 0;
+			for (_, child, data) in elem.children_dataset(data, data_map){
+				height += elem_calc_height(child, &data, data_map);
+			}
+			height
+		},
+		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
+		spider_client::message::UiElementKind::Text => 1,
+		spider_client::message::UiElementKind::TextEntry => 3,
+		spider_client::message::UiElementKind::Button => 3,
+	}
+}
+
+fn elem_calc_width(elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>) -> u16{
+	match elem.kind(){
+		spider_client::message::UiElementKind::Columns => {
+			let mut width = 0;
+			for (_, child, data) in elem.children_dataset(data, data_map){
+				width += elem_calc_width(child, &data, data_map);
+			}
+			width
+		},
+		spider_client::message::UiElementKind::Rows => {
+			let mut width = 0;
+			for (_, child, data) in elem.children_dataset(data, data_map){
+				let child_width = elem_calc_width(child, &data, data_map);
+				if child_width > width{
+					width = child_width; 
+				}
+			}
+			width
+		},
+		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
+		spider_client::message::UiElementKind::Text => elem.render_content_opt(data).chars().count() as u16 + 5,
+		spider_client::message::UiElementKind::TextEntry => 12,
+		spider_client::message::UiElementKind::Button => (elem.render_content_opt(data).chars().count() + 2) as u16,
 	}
 }

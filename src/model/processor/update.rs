@@ -44,13 +44,15 @@ impl<R: Renderer> ModelProcessor<R>{
 																		let page_id = mgr.get_page().id().clone();
 																		let id = id.clone();
 																		if let Some(text) = state.take_selected_uncommited_input_mut(){
-																			let msg = Message::Ui(UiMessage::InputFor(page_id, id, UiInput::Text(text)));
+																			let dataset_ids = state.get_selected_datasets().clone();
+																			let msg = Message::Ui(UiMessage::InputFor(page_id, id, dataset_ids, UiInput::Text(text)));
 																			self.sender.blocking_send(msg);
 																		}
 																	},
 																	UiElementKind::Button => {
 																		let page_id = mgr.get_page().id().clone();
-																		let msg = Message::Ui(UiMessage::InputFor(page_id, id.to_string(), UiInput::Click));
+																		let dataset_ids = state.get_selected_datasets().clone();
+																		let msg = Message::Ui(UiMessage::InputFor(page_id, id.to_string(), dataset_ids, UiInput::Click));
 																		self.sender.blocking_send(msg);
 																	},
 																	_ => {}
@@ -71,8 +73,8 @@ impl<R: Renderer> ModelProcessor<R>{
 								match self.view {
 									ModelView::List => {},
 									ModelView::Page => {
-										if let Some((mgr, state)) = self.get_current_mgr_state_mut(){
-											state.select_next(mgr, SelectDirection::Left);
+										if let Some((mgr, state, data_map)) = self.get_context(){
+											state.select_next(mgr, data_map, SelectDirection::Left);
 										}
 									},
 								}
@@ -81,8 +83,8 @@ impl<R: Renderer> ModelProcessor<R>{
 								match self.view {
 									ModelView::List => {},
 									ModelView::Page => {
-										if let Some((mgr, state)) = self.get_current_mgr_state_mut(){
-											state.select_next(mgr, SelectDirection::Right);
+										if let Some((mgr, state, data_map)) = self.get_context(){
+											state.select_next(mgr, data_map, SelectDirection::Right);
 										}
 									},
 								}
@@ -91,8 +93,8 @@ impl<R: Renderer> ModelProcessor<R>{
 								match self.view {
 									ModelView::List => self.select_prev_page(),
 									ModelView::Page => {
-										if let Some((mgr, state)) = self.get_current_mgr_state_mut(){
-											state.select_next(mgr, SelectDirection::Up);
+										if let Some((mgr, state, data_map)) = self.get_context(){
+											state.select_next(mgr, data_map, SelectDirection::Up);
 										}
 									},
 								}
@@ -101,8 +103,8 @@ impl<R: Renderer> ModelProcessor<R>{
 								match self.view {
 									ModelView::List => self.select_next_page(),
 									ModelView::Page => {
-										if let Some((mgr, state)) = self.get_current_mgr_state_mut(){
-											state.select_next(mgr, SelectDirection::Down);
+										if let Some((mgr, state, data_map)) = self.get_context(){
+											state.select_next(mgr, data_map, SelectDirection::Down);
 										}
 									},
 								}
@@ -185,6 +187,9 @@ impl<R: Renderer> ModelProcessor<R>{
 					},
 					None => {}, // No page, skip update
 				}
+			},
+    		ModelUpdate::UpdateDataset(path, dataset) => {
+				self.datasets.insert(path, dataset);
 			},
 		}
 	}

@@ -1,6 +1,8 @@
 
 
-use spider_client::message::{UiPage, UiPageManager};
+use std::collections::HashMap;
+
+use spider_client::message::{UiPage, UiPageManager, AbsoluteDatasetPath, DatasetData};
 
 use crate::renderer::Renderer;
 
@@ -64,4 +66,22 @@ impl<R: Renderer> ModelProcessor<R>{
 	pub(crate) fn select_next_page(&mut self){
 		self.page_set.select_next_page()
 	}
+
+
+
+	pub(crate) fn get_context(&mut self) -> Option<(&UiPageManager, &mut PageState, &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>)>{
+		match self.page_set.selected_page() {
+			Some(mgr) => {
+				let id = mgr.get_page().id();
+				if !self.page_states.contains_key(id) {
+					self.page_states.insert(id.clone(), PageState::default());
+				}
+				let state = self.page_states.get_mut(id).expect("any missing state should have been inserted");
+				Some((mgr, state, &self.datasets))
+			},
+			None => None,
+		}
+	}
+
+
 }

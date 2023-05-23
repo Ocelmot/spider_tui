@@ -1,5 +1,5 @@
 use spider_client::{
-    message::{Message, UiElement, UiElementKind, UiMessage, UiPath, UiPageList, UiPageManager},
+    message::{Message, UiElement, UiElementKind, UiMessage, UiPath, UiPageList, UiPageManager, AbsoluteDatasetPath, DatasetData},
     Relation, SpiderId2048,
 };
 
@@ -34,6 +34,8 @@ pub struct ModelProcessor<R: Renderer> {
     page_set: UiPageList,
     page_states: HashMap<SpiderId2048, PageState>,
 
+    // Datasets
+    datasets: HashMap<AbsoluteDatasetPath, Vec<DatasetData>>,
 
     exit: bool,
 }
@@ -56,6 +58,9 @@ impl<R: Renderer> ModelProcessor<R> {
 
             page_set: UiPageList::new(),
             page_states: HashMap::new(),
+
+            datasets: HashMap::new(),
+
             exit: false,
         }
     }
@@ -69,9 +74,6 @@ impl<R: Renderer> ModelProcessor<R> {
 
             self.sender
                 .blocking_send(Message::Ui(UiMessage::Subscribe))
-                .unwrap();
-            self.sender
-                .blocking_send(Message::Ui(UiMessage::GetPages))
                 .unwrap();
 
             renderer.startup();
@@ -103,8 +105,8 @@ impl<R: Renderer> ModelProcessor<R> {
 				renderer.render_page_list(&self.page_set.get_page_vec(), self.page_set.selected_index());
 			},
 			ModelView::Page => {
-				match self.get_current_mgr_state(){
-					Some((mgr, state)) => renderer.render_page(mgr.get_page(), state),
+				match self.get_context(){
+					Some((mgr, state, data_map)) => renderer.render_page(mgr.get_page(), state, data_map),
 					None => {
 						self.view = ModelView::List;
 						renderer.render_page_list(&self.page_set.get_page_vec(), self.page_set.selected_index());
