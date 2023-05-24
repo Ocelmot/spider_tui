@@ -9,6 +9,8 @@ use spider_client::message::{UiElement, UiPageManager, UiElementKind, DatasetDat
 pub struct PageState{
     selected: Option<String>, // Element id for selected element
     selected_datasets: Vec<usize>,
+    selected_datum: Option<DatasetData>,
+
     uncommited_inputs: HashMap<String, String>, // Map from element id to contents
 }
 
@@ -17,6 +19,8 @@ impl Default for PageState{
         Self{
             selected: Default::default(),
             selected_datasets: Default::default(),
+            selected_datum: None,
+
             uncommited_inputs: Default::default()
         }
     }
@@ -67,6 +71,9 @@ impl PageState{
     }
     pub fn get_selected_datasets(&self) -> &Vec<usize>{
         &self.selected_datasets
+    }
+    pub fn get_selected_datum(&self) -> &Option<DatasetData>{
+        &self.selected_datum
     }
 
     pub fn select_next(&mut self, mgr: &UiPageManager, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>, direction: SelectDirection) {
@@ -148,10 +155,11 @@ impl PageState{
         selected_path.reverse();
         for (index, element, mut dataset_indices, datum) in selected_path{
             match elem_select_next(element, index, &datum, data_map, direction) {
-                Some((string, mut dataset_indices_tail)) => {
+                Some((string, mut dataset_indices_tail, selected_datum)) => {
                     self.selected = Some(string);
                     dataset_indices.append(&mut dataset_indices_tail);
                     self.selected_datasets = dataset_indices;
+                    self.selected_datum = selected_datum;
                     break;
                 },
                 None => {}, // continue up path
@@ -160,7 +168,7 @@ impl PageState{
     }
 }
 
-fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>, direction: SelectDirection) -> Option<(String, Vec<usize>)>{
+fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>, direction: SelectDirection) -> Option<(String, Vec<usize>, Option<DatasetData>)>{
     match elem.kind(){
         UiElementKind::Columns => {
             match direction{
@@ -169,15 +177,15 @@ fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>,
                 SelectDirection::Left => {
                     for (i, child, datum) in elem.children_dataset(data, data_map).take(index).rev(){
                         let res = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = res{
+                        if let Some((id, mut dataset_tail, selected_datum)) = res{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -186,15 +194,15 @@ fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>,
                 SelectDirection::Right => {
                     for (i, child, datum) in elem.children_dataset(data, data_map).skip(index+1){
                         let res = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = res{
+                        if let Some((id, mut dataset_tail, selected_datum)) = res{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -207,15 +215,15 @@ fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>,
                 SelectDirection::Up => {
                     for (i, child, datum) in elem.children_dataset(data, data_map).take(index).rev(){
                         let res = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = res{
+                        if let Some((id, mut dataset_tail, selected_datum)) = res{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -224,15 +232,15 @@ fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>,
                 SelectDirection::Down => {
                     for (i, child, datum) in elem.children_dataset(data, data_map).skip(index+1){
                         let res = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = res{
+                        if let Some((id, mut dataset_tail, selected_datum)) = res{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -247,22 +255,22 @@ fn elem_select_next(elem: &UiElement, index: usize, data: &Option<&DatasetData>,
     }
 }
 
-fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>, direction: SelectDirection) -> Option<(String, Vec<usize>)> {
+fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>, direction: SelectDirection) -> Option<(String, Vec<usize>, Option<DatasetData>)> {
     match elem.kind(){
         UiElementKind::Columns => {
             match direction{
                 SelectDirection::Left => { // reverse order
                     for (i, child, datum) in elem.children_dataset(data, data_map).rev(){
                         let ret = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = ret{
+                        if let Some((id, mut dataset_tail, selected_datum)) = ret{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -271,15 +279,15 @@ fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data
                 _ => { // get first valid
                     for (i, child, datum) in elem.children_dataset(data, data_map){
                         let ret = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = ret{
+                        if let Some((id, mut dataset_tail, selected_datum)) = ret{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -292,15 +300,15 @@ fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data
                 SelectDirection::Up => { // reverse order
                     for (i, child, datum) in elem.children_dataset(data, data_map).rev(){
                         let ret = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = ret{
+                        if let Some((id, mut dataset_tail, selected_datum)) = ret{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -309,15 +317,15 @@ fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data
                 _ => { // get first valid
                     for (i, child, datum) in elem.children_dataset(data, data_map){
                         let ret = elem_select_enter_towards(child, &datum, data_map, direction);
-                        if let Some((id, mut dataset_tail)) = ret{
+                        if let Some((id, mut dataset_tail, selected_datum)) = ret{
                             // need to prepend to the data index tail if this node had a dataset
                             return match i{
                                 Some(dataset_index) => {
                                     let mut tail = vec![dataset_index];
                                     tail.append(&mut dataset_tail);
-                                    Some((id, tail))
+                                    Some((id, tail, selected_datum))
                                 },
-                                None => Some((id, dataset_tail)),
+                                None => Some((id, dataset_tail, selected_datum)),
                             };
                         }
                     }
@@ -327,10 +335,11 @@ fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data
         },
         UiElementKind::Grid(_, _) => todo!(),
         _ => {
-            if elem.selectable(){
+            let not_none = elem.kind().clone().resolve(data) != UiElementKind::None;
+            if elem.selectable() && not_none{
                 match elem.id(){
                     Some(id) => {
-                        Some((id.clone(), Vec::new()))
+                        Some((id.clone(), Vec::new(), data.cloned()))
                     },
                     None => None,
                 }

@@ -15,7 +15,7 @@ use crossterm::{
 	execute
 };
 
-use spider_client::message::{UiPage, UiElement, DatasetData, AbsoluteDatasetPath};
+use spider_client::message::{UiPage, UiElement, DatasetData, AbsoluteDatasetPath, UiElementKind};
 use tui::{
 	Terminal,
 	widgets::{Block, Borders, Paragraph, BorderType, List, ListItem},
@@ -146,13 +146,22 @@ fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, el
 		Some(data) => elem.render_content(data),
 		None => elem.text(),
 	};
+	let mut elem_kind = elem.kind().clone();
+	elem_kind = elem_kind.resolve(data);
 
-	match elem.kind(){
+
+	match elem_kind{
+		UiElementKind::None =>{}
+		UiElementKind::Spacer =>{}
 		spider_client::message::UiElementKind::Columns => {
 			// calc constraints
 			let mut constraints = Vec::new();
 			for (_, child, datum) in elem.children_dataset(data, data_map){
-				constraints.push(Constraint::Length(elem_calc_width(child, &datum, data_map)));
+				if let UiElementKind::Spacer = child.kind(){
+					constraints.push(Constraint::Min(0))
+				}else{
+					constraints.push(Constraint::Length(elem_calc_width(child, &datum, data_map)));
+				}
 			}
 			let areas = Layout::default()
 				.constraints(constraints)
@@ -178,7 +187,11 @@ fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, el
 			// calc constraints
 			let mut constraints = Vec::new();
 			for (_, child, datum) in elem.children_dataset(data, data_map){
-				constraints.push(Constraint::Length(elem_calc_height(child, &datum, data_map)));
+				if let UiElementKind::Spacer = child.kind(){
+					constraints.push(Constraint::Min(0))
+				}else{
+					constraints.push(Constraint::Length(elem_calc_height(child, &datum, data_map)));
+				}
 			}
 			constraints.push(Constraint::Min(0));
 			let areas = Layout::default()
@@ -235,12 +248,21 @@ fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, el
 			}
 			frame.render_widget(w.block(b), rect);
 		},
+		UiElementKind::Variable(content_part) => { // If part could not have been resolved
+			let w = Paragraph::new("e".to_owned() + &content_part.to_string());
+			frame.render_widget(w, rect);
+		} 
 	}
 }
 
 
 fn elem_calc_height(elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>) -> u16{
-	match elem.kind(){
+	let mut elem_kind = elem.kind().clone();
+	elem_kind = elem_kind.resolve(data);
+
+	match elem_kind{
+		UiElementKind::None => 0,
+		UiElementKind::Spacer => 0,
 		spider_client::message::UiElementKind::Columns => {
 			let mut height = 0;
 			for (_, child, data) in elem.children_dataset(data, data_map){
@@ -262,11 +284,17 @@ fn elem_calc_height(elem: &UiElement, data: &Option<&DatasetData>, data_map: &Ha
 		spider_client::message::UiElementKind::Text => 1,
 		spider_client::message::UiElementKind::TextEntry => 3,
 		spider_client::message::UiElementKind::Button => 3,
+		UiElementKind::Variable(_) => 1,
 	}
 }
 
 fn elem_calc_width(elem: &UiElement, data: &Option<&DatasetData>, data_map: &HashMap<AbsoluteDatasetPath, Vec<DatasetData>>) -> u16{
-	match elem.kind(){
+	let mut elem_kind = elem.kind().clone();
+	elem_kind = elem_kind.resolve(data);
+
+	match elem_kind{
+		UiElementKind::None => 0,
+		UiElementKind::Spacer => 0,
 		spider_client::message::UiElementKind::Columns => {
 			let mut width = 0;
 			for (_, child, data) in elem.children_dataset(data, data_map){
@@ -285,8 +313,9 @@ fn elem_calc_width(elem: &UiElement, data: &Option<&DatasetData>, data_map: &Has
 			width
 		},
 		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
-		spider_client::message::UiElementKind::Text => elem.render_content_opt(data).chars().count() as u16 + 5,
+		spider_client::message::UiElementKind::Text => elem.render_content_opt(data).chars().count() as u16 + 1,
 		spider_client::message::UiElementKind::TextEntry => 12,
 		spider_client::message::UiElementKind::Button => (elem.render_content_opt(data).chars().count() + 2) as u16,
+		UiElementKind::Variable(_) => elem.render_content_opt(data).chars().count() as u16 + 1,
 	}
 }

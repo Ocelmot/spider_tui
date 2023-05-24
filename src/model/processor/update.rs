@@ -39,7 +39,11 @@ impl<R: Renderer> ModelProcessor<R>{
 													Some(id) => {
 														match mgr.get_by_id(id){
 															Some(elem) => {
-																match elem.kind(){
+																let selected_datum = state.get_selected_datum();
+																let mut elem_kind = elem.kind().clone();
+																elem_kind = elem_kind.resolve(&selected_datum.as_ref());
+
+																match elem_kind{
 																	UiElementKind::TextEntry => {
 																		let page_id = mgr.get_page().id().clone();
 																		let id = id.clone();
