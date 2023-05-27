@@ -147,7 +147,6 @@ async fn splice_client_keyboard_model(mut client: SpiderClient, mut model: Model
 
 fn message_to_update(msg: Message) -> Option<ModelUpdate> {
     match msg {
-        Message::Peripheral(_) => None,
         Message::Ui(ui) => {
             match ui {
                 UiMessage::Subscribe => None,
