@@ -8,7 +8,7 @@ mod event_stream;
 use model::{Model, update::ModelUpdate};
 use crate::config::SpiderTuiConfig;
 
-use std::{io, env, path::{Path, PathBuf}};
+use std::{io, env, path::{Path, PathBuf}, time::Duration};
 
 use tokio::select;
 
@@ -32,12 +32,15 @@ use tracing_appender::rolling::{Rotation, RollingFileAppender};
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    console_subscriber::init();
+    console_subscriber::ConsoleLayer::builder()
+        .retention(Duration::from_secs(60))
+        .server_addr(([127, 0, 0, 1], 6670))
+        .init();
 
     // command line arguments: <filename>
     // filename is name of config file, defaults to config.json
     let mut args = env::args().skip(1);
-    let path_str = args.next().unwrap_or("spider_tui_config.json".to_string());
+    let path_str = args.next().unwrap_or("config.json".to_string());
     let config_path = Path::new(&path_str);
 
     let config = SpiderTuiConfig::from_file(config_path);
@@ -58,6 +61,9 @@ async fn main() -> Result<(), io::Error> {
     }else{
         let mut client = SpiderClient::new();
         client.set_state_path(&client_path);
+        if let Some(addr) = config.base_addr{
+            client.add_strat(AddressStrategy::Addr(addr));
+        }
         client.add_strat(AddressStrategy::Addr(String::from("localhost:1930")));
         client.save();
         client
@@ -164,7 +170,7 @@ fn message_to_update(msg: Message) -> Option<ModelUpdate> {
             }
         },
         Message::Dataset(_) => None,
-        Message::Event (_) => None,
+        Message::Router (_) => None,
     }
 }
 

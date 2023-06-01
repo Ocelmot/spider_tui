@@ -20,7 +20,7 @@ use tui::{
 	Terminal,
 	widgets::{Block, Borders, Paragraph, BorderType, List, ListItem},
 	layout::{Layout, Direction, Constraint, Rect},
-	backend::Backend, Frame, style::{Color, Style, Modifier}
+	backend::Backend, Frame, style::{Color, Style, Modifier}, text::Text
 };
 
 use tui::backend::CrosstermBackend;
@@ -73,9 +73,9 @@ impl Renderer for TUI{
 
 			let b = Block::default()
 				.title(format!("{} (esc=Menu)", page.name()))
-				.borders(Borders::all())
+				.borders(Borders::TOP)
 				.border_style(Style::default().fg(Color::White))
-				.border_type(BorderType::Rounded)
+				.border_type(BorderType::Double)
 				.style(Style::default().bg(Color::Black));
 			let inner_size = b.inner(areas[0]);
 			frame.render_widget(b, areas[0]);
@@ -216,7 +216,8 @@ fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, el
 		},
 		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
 		spider_client::message::UiElementKind::Text => {
-			let w = Paragraph::new(content);
+			let mut w = Paragraph::new(content);
+			w = w.wrap(tui::widgets::Wrap { trim: false });
 			frame.render_widget(w, rect);
 		},
 		spider_client::message::UiElementKind::TextEntry => {
@@ -281,7 +282,13 @@ fn elem_calc_height(elem: &UiElement, data: &Option<&DatasetData>, data_map: &Ha
 			height
 		},
 		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
-		spider_client::message::UiElementKind::Text => 1,
+		spider_client::message::UiElementKind::Text => {
+			let t = elem.render_content_opt(data);
+			// let text = Text::from(t);
+			// TryInto::<u16>::try_into(text.height()).unwrap() + 1
+			let len = t.chars().count();
+			TryInto::<u16>::try_into((len / 80)).unwrap() + 1
+		},
 		spider_client::message::UiElementKind::TextEntry => 3,
 		spider_client::message::UiElementKind::Button => 3,
 		UiElementKind::Variable(_) => 1,
@@ -313,9 +320,15 @@ fn elem_calc_width(elem: &UiElement, data: &Option<&DatasetData>, data_map: &Has
 			width
 		},
 		spider_client::message::UiElementKind::Grid(_, _) => todo!(),
-		spider_client::message::UiElementKind::Text => elem.render_content_opt(data).chars().count() as u16 + 1,
-		spider_client::message::UiElementKind::TextEntry => 12,
+		spider_client::message::UiElementKind::Text => {
+			let text = Text::from(elem.render_content_opt(data));
+			TryInto::<u16>::try_into(text.width()).unwrap()
+		},
+		spider_client::message::UiElementKind::TextEntry => 35,
 		spider_client::message::UiElementKind::Button => (elem.render_content_opt(data).chars().count() + 2) as u16,
-		UiElementKind::Variable(_) => elem.render_content_opt(data).chars().count() as u16 + 1,
+		UiElementKind::Variable(_) => {
+			let text = Text::from(elem.render_content_opt(data));
+			TryInto::<u16>::try_into(text.width()).unwrap()
+		},
 	}
 }

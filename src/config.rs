@@ -14,6 +14,9 @@ pub struct SpiderTuiConfig{
     #[serde(default = "default_state_data_path")]
     pub state_data_path: String,
 
+    #[serde(default)]
+    pub base_addr: Option<String>,
+
     #[serde(default = "keyfile_path")]
     pub keyfile_path: String,
 
