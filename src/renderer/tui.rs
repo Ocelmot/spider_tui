@@ -228,7 +228,7 @@ fn draw_elem<B: Backend>(frame: &mut Frame<B>, state: &PageState, rect: Rect, el
 				.style(Style::default().bg(Color::Black));
 			let input_text = match elem.id(){
 				Some(id) => {
-					match state.get_uncommited_input(id) {
+					match state.get_uncommited_input(id, dataset_indices) {
 						Some(text) => text,
 						None => "",
 					}

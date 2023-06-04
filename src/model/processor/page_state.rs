@@ -11,7 +11,7 @@ pub struct PageState{
     selected_datasets: Vec<usize>,
     selected_datum: Option<DatasetData>,
 
-    uncommited_inputs: HashMap<String, String>, // Map from element id to contents
+    uncommited_inputs: HashMap<(String, Vec<usize>), String>, // Map from element id to contents
 }
 
 impl Default for PageState{
@@ -28,22 +28,27 @@ impl Default for PageState{
 
 impl PageState{
     // uncommited input
-    pub fn get_uncommited_input(&self, id: &String) -> Option<&String>{
-        self.uncommited_inputs.get(id)
+    pub fn get_uncommited_input(&self, id: &String, dataset_indices: &Vec<usize>) -> Option<&String>{
+        let key = (id.clone(), dataset_indices.clone());
+        self.uncommited_inputs.get(&key)
     }
-    pub fn get_uncommited_input_mut(&mut self, id: &String) -> Option<&mut String>{
-        self.uncommited_inputs.get_mut(id)
+    pub fn get_uncommited_input_mut(&mut self, id: &String, dataset_indices: &Vec<usize>) -> Option<&mut String>{
+        let key = (id.clone(), dataset_indices.clone());
+        self.uncommited_inputs.get_mut(&key)
     }
-    pub fn clear_uncommitted_input(&mut self, id: &String){
-        self.uncommited_inputs.remove(id);
+    pub fn clear_uncommitted_input(&mut self, id: &String, dataset_indices: &Vec<usize>){
+        let key = (id.clone(), dataset_indices.clone());
+        self.uncommited_inputs.remove(&key);
     }
-    pub fn set_uncommited_input(&mut self, id: String, value: String){
-        self.uncommited_inputs.insert(id, value);
+    pub fn set_uncommited_input(&mut self, id: String, dataset_indices: &Vec<usize>, value: String){
+        let key = (id.clone(), dataset_indices.clone());
+        self.uncommited_inputs.insert(key, value);
     }
     pub fn get_selected_uncommited_input_mut(&mut self) -> Option<&mut String>{
         match &self.selected{
             Some(id) => {
-                self.uncommited_inputs.get_mut(id)
+                let key = (id.clone(), self.selected_datasets.clone());
+                self.uncommited_inputs.get_mut(&key)
             },
             None => None,
         }
@@ -51,7 +56,8 @@ impl PageState{
     pub fn take_selected_uncommited_input_mut(&mut self) -> Option<String>{
         match &self.selected{
             Some(id) => {
-                self.uncommited_inputs.remove(id)
+                let key = (id.clone(), self.selected_datasets.clone());
+                self.uncommited_inputs.remove(&key)
             },
             None => None,
         }
@@ -59,7 +65,8 @@ impl PageState{
     pub fn set_selected_uncommited_input(&mut self,  value: String){
         match &self.selected{
             Some(id) => {
-                self.uncommited_inputs.insert(id.to_string(), value);
+                let key = (id.clone(), self.selected_datasets.clone());
+                self.uncommited_inputs.insert(key, value);
             },
             None => {},
         };
