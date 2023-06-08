@@ -1,5 +1,5 @@
 use spider_client::{
-    message::{Message, UiElement, UiElementKind, UiMessage, UiPath, UiPageList, UiPageManager, AbsoluteDatasetPath, DatasetData},
+    message::{Message, UiElement, UiElementKind, UiMessage, UiPath, UiPageList, UiPageManager, AbsoluteDatasetPath, DatasetData, RouterMessage},
     Relation, SpiderId2048,
 };
 
@@ -72,9 +72,14 @@ impl<R: Renderer> ModelProcessor<R> {
                 None => return Ok(()),
             };
 
-            self.sender
-                .blocking_send(Message::Ui(UiMessage::Subscribe))
-                .unwrap();
+            // set name
+            let msg = RouterMessage::SetIdentityProperty("name".into(), "TUI".into());
+            let msg = Message::Router(msg);
+            self.sender.blocking_send(msg).unwrap();
+
+            // subscribe to ui
+            let msg = Message::Ui(UiMessage::Subscribe);
+            self.sender.blocking_send(msg).unwrap();
 
             renderer.startup();
 

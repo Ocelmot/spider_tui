@@ -342,13 +342,18 @@ fn elem_select_enter_towards(elem: &UiElement, data: &Option<&DatasetData>, data
         },
         UiElementKind::Grid(_, _) => todo!(),
         _ => {
+            // Todo: Better logic around which kinds of elements are selectable
             let not_none = elem.kind().clone().resolve(data) != UiElementKind::None;
             if elem.selectable() && not_none{
-                match elem.id(){
-                    Some(id) => {
-                        Some((id.clone(), Vec::new(), data.cloned()))
-                    },
-                    None => None,
+                if elem.kind().clone().resolve(data) == UiElementKind::Text{
+                    None
+                }else{
+                    match elem.id(){
+                        Some(id) => {
+                            Some((id.clone(), Vec::new(), data.cloned()))
+                        },
+                        None => None,
+                    }
                 }
             }else{
                 None
